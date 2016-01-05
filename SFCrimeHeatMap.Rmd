@@ -1,0 +1,54 @@
+---
+title: "San Francisco Crime Heatmap"
+author: "Nathaniel Reed"
+date: "January 3, 2016"
+output: html_document
+---
+
+Here I show how to present the San Francisco crime data on a heatmap that shows the crime numbers by police district.
+
+We'll use the training set:
+
+```{r}
+unzip("train.csv.zip")
+train <- read.csv("train.csv", 
+                  colClasses=c("Date", "factor", "character", "factor", "factor", "factor", "character", "numeric", "numeric"))
+summary(train)
+```
+
+Since this is spatial data, it would be nice if we could plot this on a map. Fortunately, the city of San Francisco makes this freely available:
+
+```{r}
+download.file("http://apps.sfgov.org/datafiles/view.php?file=sfgis/sfpd_districts.zip", method="curl", destfile="sfpd_districts.zip")
+unzip("sfpd_districts.zip", exdir="sfpd_districts")
+```
+
+We use the rgdal package to load the shapefile into a data frame 'sfpd':
+
+```{r}
+library(rgdal)
+sfpd <- readOGR(dsn="sfpd_districts", layer="sfpd_districts")
+```
+
+Next we aggregate crime data by police district and join it with the spatial data:
+
+```{r}
+library(dplyr)
+# Rollup crime stats by police dept
+by_pd <- group_by(train, PdDistrict)
+by_pd <- by_pd %>% mutate(count = n())
+by_pd_summary <- summarize(by_pd, num_crimes=n())
+
+# Join with lnd by DISTRICT
+by_pd_summary <- rename(by_pd_summary, DISTRICT=PdDistrict)
+sfpd@data <- left_join(sfpd@data, by_pd_summary)
+```
+
+Now we can plot this on a heatmap:
+
+```{r}
+library(tmap)
+qtm(sfpd, "num_crimes", fill.title="Number of Crimes") +
+  tm_text("DISTRICT", size="AREA", root=5)
+```
+
